@@ -58,6 +58,7 @@ import org.geysermc.geyser.item.custom.GeyserCustomItemBedrockOptions;
 import org.geysermc.geyser.item.custom.GeyserCustomItemDefinition;
 import org.geysermc.geyser.item.exception.InvalidItemComponentsException;
 import org.geysermc.geyser.item.type.Item;
+import org.geysermc.geyser.registry.java.BuiltInJavaRegistries;
 import org.geysermc.geyser.registry.mappings.BuiltInMappings;
 import org.geysermc.geyser.registry.mappings.MappingsConfigReader;
 import org.geysermc.geyser.registry.mappings.MappingsType;
@@ -177,10 +178,17 @@ public class CustomItemRegistryPopulator {
         String bedrockIdentifier = customItem.bedrockIdentifier().toString();
         NbtMapBuilder bedrockComponents = createComponentNbt(MinecraftKey.identifierToKey(customItem.identifier()), context);
 
-        Item javaItem = new Item(customItem.identifier().toString(), Item.builder()
-            .components(context.components())
-            .resolvableComponents(context.resolvableComponents()));
-        Items.register(javaItem, customItem.javaId());
+        Item javaItem;
+        // Register item on the first pass, and on other passes get the item back from the registry.
+        // This code really should be improved: only register at the start and freeze ITEM registry before populating item mappings!!!
+        if (firstPass) {
+            javaItem = new Item(customItem.identifier().toString(), Item.builder()
+                .components(context.components())
+                .resolvableComponents(context.resolvableComponents()));
+            Items.register(javaItem, customItem.javaId());
+        } else {
+            javaItem = BuiltInJavaRegistries.ITEM.getOrThrow(customItem.javaId());
+        }
 
         ItemMapping customMapping = ItemMapping.builder()
             .bedrockIdentifier(bedrockIdentifier)
@@ -396,12 +404,16 @@ public class CustomItemRegistryPopulator {
             computeEntityPlacerProperties(componentBuilder);
         }
 
+        if (context.components().get(DataComponentTypes.COMPOSTABLE) != null) {
+            componentBuilder.putCompound("minecraft:compostable", NbtMap.builder()
+                .putInt("composting_chance", 1)
+                .build());
+        }
+
         // The client only lets an item into furnace fuel slots when it has this component.
-        // FIXME 26.3 does duration matter?
-        int fuelDuration = context.components().get(DataComponentTypes.COOKING_FUEL) != null ? 1 : 0;
-        if (fuelDuration > 0) {
+        if (context.components().get(DataComponentTypes.COOKING_FUEL) != null) {
             componentBuilder.putCompound("minecraft:fuel", NbtMap.builder()
-                .putFloat("duration", fuelDuration / 20.0F)
+                .putFloat("duration", 1.0F)
                 .build());
         }
 
